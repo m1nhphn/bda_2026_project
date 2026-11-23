@@ -1,0 +1,81 @@
+---
+title: "Stage 8: Results"
+author: anonymous
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+editor: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| results: false
+source("setup.R")
+fits <- get_fits()
+```
+
+# Price elasticity
+
+```{r}
+#| label: tbl-elasticity
+#| tbl-cap: "Price elasticity and the % change in packs per person for a 10% higher real price."
+bind_rows(lapply(specs$model, function(m) {
+  as_draws_df(fits[[m]], variable = "b_log_rprice_c") |>
+    mutate_variables(pct_10 = 100 * (1.1^b_log_rprice_c - 1)) |>
+    summarise_draws("mean", "sd", "mcse_mean", ~quantile2(.x, probs = c(0.05, 0.95))) |>
+    mutate(model = m, .before = 1)
+})) |>
+  kable(digits = 3)
+```
+
+```{r}
+#| label: fig-elasticity
+#| fig-cap: "Posterior of the price elasticity in each model."
+#| fig-width: 8
+#| fig-height: 4
+bind_rows(lapply(specs$model, function(m) {
+  tibble(model = m, b = as_draws_df(fits[[m]], variable = "b_log_rprice_c")$b_log_rprice_c)
+})) |>
+  ggplot(aes(x = b, y = model)) +
+  stat_halfeye() +
+  labs(x = "Price elasticity", y = NULL)
+```
+
+# State-specific elasticities
+
+```{r}
+#| label: fig-state-elasticity
+#| fig-cap: "State-specific price elasticities in M2b (posterior mean and 90% interval). Solid: M2b population mean; dashed: pooled M1b."
+#| fig-width: 7
+#| fig-height: 8
+coef(fits$M2b, probs = c(0.05, 0.95))$state[, , "log_rprice_c"] |>
+  as.data.frame() |>
+  tibble::rownames_to_column("state") |>
+  mutate(state = reorder(state, Estimate)) |>
+  ggplot(aes(Estimate, state)) +
+  geom_vline(xintercept = fixef(fits$M2b)["log_rprice_c", "Estimate"]) +
+  geom_vline(xintercept = fixef(fits$M1b)["log_rprice_c", "Estimate"], linetype = "dashed") +
+  geom_pointrange(aes(xmin = Q5, xmax = Q95), size = 0.2) +
+  labs(x = "Price elasticity", y = "State") +
+  theme(axis.text.y = element_text(size = 7))
+```
+
+# Coefficients
+
+```{r}
+#| label: fig-m2b-areas
+#| fig-cap: "Marginal posteriors of the M2b population-level coefficients."
+#| fig-width: 7
+#| fig-height: 4
+mcmc_areas(as_draws_df(fits$M2b),
+           pars = c("b_log_rprice_c", "b_log_rpimin_c", "b_log_rincome_c", "b_year_c"),
+           prob_outer = 0.98)
+```

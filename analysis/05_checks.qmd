@@ -1,0 +1,111 @@
+---
+title: "Stage 6a: Convergence, posterior predictive checks and residuals"
+author: anonymous
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+editor: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| results: false
+source("setup.R")
+fits <- get_fits()
+```
+
+# Convergence diagnostics
+
+```{r}
+#| label: tbl-convergence
+#| tbl-cap: "Convergence diagnostics for all parameters of each model."
+convergence <- function(fit) {
+  s <- summarise_draws(as_draws_df(fit), "rhat", "ess_bulk", "ess_tail")
+  np <- nuts_params(fit)
+  tibble(
+    max_rhat = max(s$rhat, na.rm = TRUE),
+    min_ess_bulk = min(s$ess_bulk, na.rm = TRUE),
+    min_ess_tail = min(s$ess_tail, na.rm = TRUE),
+    divergences = sum(np$Value[np$Parameter == "divergent__"]),
+    max_treedepth_hits = sum(np$Value[np$Parameter == "treedepth__"] >= 10)
+  )
+}
+bind_rows(lapply(specs$model, function(m) mutate(convergence(fits[[m]]), model = m, .before = 1))) |>
+  kable(digits = c(0, 3, 0, 0, 0, 0))
+```
+
+# Posterior predictive checks
+
+```{r}
+#| label: fig-ppc-dens
+#| fig-cap: "Posterior predictive density overlays."
+#| fig-width: 10
+#| fig-height: 7
+wrap_plots(lapply(specs$model, function(m) {
+  pp_check(fits[[m]], type = "dens_overlay", ndraws = 100) + labs(title = m)
+}), ncol = 2) + plot_layout(guides = "collect")
+```
+
+```{r}
+#| label: fig-ppc-stat
+#| fig-cap: "Posterior predictive checks for the standard deviation and the minimum and maximum."
+#| fig-width: 12
+#| fig-height: 9
+wrap_plots(lapply(specs$model, function(m) {
+  (pp_check(fits[[m]], type = "stat", stat = "sd", bins = 30) + labs(title = m)) |
+    pp_check(fits[[m]], type = "stat_2d", stat = c("min", "max"))
+}), ncol = 1)
+```
+
+```{r}
+#| label: fig-ppc-loo-pit
+#| fig-cap: "LOO-PIT Q-Q plots."
+#| fig-width: 10
+#| fig-height: 7
+wrap_plots(lapply(specs$model, function(m) {
+  pp_check(fits[[m]], type = "loo_pit_qq", ndraws = 1000) + labs(title = m)
+}), ncol = 2)
+```
+
+# Residuals over time
+
+```{r}
+#| label: fig-resid
+#| fig-cap: "Residuals over time per state and their lag-1 autocorrelation."
+#| fig-width: 10
+#| fig-height: 8
+resid_df <- bind_rows(lapply(specs$model, function(m) {
+  cigar |>
+    mutate(model = m, resid = log_sales - colMeans(posterior_epred(fits[[m]])))
+}))
+lag1 <- resid_df |>
+  arrange(model, state, year_full) |>
+  group_by(model, state) |>
+  summarise(acf1 = cor(resid[-1], resid[-n()]), .groups = "drop")
+(ggplot(resid_df, aes(year_full, resid, group = state)) +
+    geom_hline(yintercept = 0, colour = "grey40") +
+    geom_line(alpha = 0.3) +
+    facet_wrap(~ model, nrow = 1) +
+    labs(x = "Year", y = "Residual")) /
+  (ggplot(lag1, aes(acf1)) +
+     geom_histogram(bins = 20) +
+     facet_wrap(~ model, nrow = 1) +
+     labs(x = "Lag-1 autocorrelation within state", y = "States"))
+```
+
+```{r}
+#| label: tbl-acf
+#| tbl-cap: "Median lag-1 autocorrelation of residuals within a state."
+lag1 |>
+  group_by(model) |>
+  summarise(median_acf1 = median(acf1)) |>
+  kable(digits = 2)
+```

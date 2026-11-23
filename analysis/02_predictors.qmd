@@ -1,0 +1,33 @@
+---
+title: "Stage 2: Predictors and collinearity"
+author: anonymous
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+editor: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| results: false
+source("setup.R")
+```
+
+# Collinearity
+
+```{r}
+#| label: tbl-cor
+#| tbl-cap: "Correlations between the predictors."
+cigar |>
+  select(log_rprice_c, log_rpimin_c, log_rincome_c, year_c) |>
+  cor() |>
+  kable(digits = 2)
+```

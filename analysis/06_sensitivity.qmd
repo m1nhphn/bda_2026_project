@@ -1,0 +1,91 @@
+---
+title: "Stage 6b: Prior sensitivity"
+author: anonymous
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+editor: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| results: false
+source("setup.R")
+fits <- get_fits()
+```
+
+# Power-scaling
+
+```{r}
+#| label: tbl-powerscale
+#| tbl-cap: "Power-scaling sensitivity (priorsense)."
+bind_rows(lapply(specs$model, function(m) {
+  as.data.frame(powerscale_sensitivity(fits[[m]], variable = pars[[m]])) |>
+    mutate(model = m, .before = 1)
+})) |>
+  kable(digits = 3)
+```
+
+```{r}
+#| label: fig-powerscale
+#| fig-cap: "Power-scaling of prior and likelihood for M2b."
+#| fig-width: 12
+#| fig-height: 7
+powerscale_plot_dens(fits$M2b, variable = pars$M2b)
+```
+
+# Alternative priors
+
+```{r}
+#| label: alt-fits
+#| results: false
+alt_scales <- c(narrow = 0.25, wide = 5)
+alt_fits <- list()
+for (m in specs$model) {
+  for (a in names(alt_scales)) {
+    alt_fits[[paste(m, a)]] <- fit_model(m, alt_scales[[a]], paste0("_", a))
+  }
+}
+```
+
+```{r}
+#| label: fig-prior-alt
+#| fig-cap: "Price elasticity (posterior mean and 90% interval) under narrow, baseline and wide priors."
+#| fig-width: 8
+#| fig-height: 4
+prior_alt <- bind_rows(
+  lapply(specs$model, function(m) {
+    summarise_draws(as_draws_df(fits[[m]], variable = "b_log_rprice_c"),
+                    "mean", ~quantile2(.x, probs = c(0.05, 0.95))) |>
+      mutate(model = m, prior = "baseline")
+  }),
+  lapply(names(alt_fits), function(n) {
+    summarise_draws(as_draws_df(alt_fits[[n]], variable = "b_log_rprice_c"),
+                    "mean", ~quantile2(.x, probs = c(0.05, 0.95))) |>
+      mutate(model = sub(" .*", "", n), prior = sub(".* ", "", n))
+  })
+) |>
+  mutate(prior = factor(prior, levels = c("narrow", "baseline", "wide")))
+ggplot(prior_alt, aes(mean, prior, colour = prior)) +
+  geom_pointrange(aes(xmin = q5, xmax = q95)) +
+  facet_wrap(~ model, nrow = 1) +
+  labs(x = "Price elasticity", y = NULL) +
+  theme(legend.position = "none")
+```
+
+```{r}
+#| label: tbl-prior-alt
+#| tbl-cap: "Price elasticity under narrow, baseline and wide priors."
+prior_alt |>
+  arrange(model, prior) |>
+  select(model, prior, mean, q5, q95) |>
+  kable(digits = 3)
+```

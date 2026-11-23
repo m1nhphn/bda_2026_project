@@ -1,0 +1,42 @@
+---
+title: "Stage 5: Fit with brms"
+author: anonymous
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+editor: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| results: false
+source("setup.R")
+```
+
+# Fit
+
+```{r}
+#| label: fits
+#| results: false
+fits <- get_fits()
+```
+
+```{r}
+#| label: tbl-fixef
+#| tbl-cap: "Population-level coefficients (posterior mean, SD, 90% credible interval)."
+bind_rows(lapply(specs$model, function(m) {
+  fixef(fits[[m]], probs = c(0.05, 0.95)) |>
+    as.data.frame() |>
+    tibble::rownames_to_column("parameter") |>
+    mutate(model = m, .before = 1)
+})) |>
+  kable(digits = 2)
+```

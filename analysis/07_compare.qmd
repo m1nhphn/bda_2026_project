@@ -1,0 +1,78 @@
+---
+title: "Stage 7: Model comparison"
+author: anonymous
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+editor: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| results: false
+source("setup.R")
+fits <- get_fits()
+```
+
+# PSIS-LOO
+
+```{r}
+#| label: loo
+#| results: false
+for (m in specs$model) {
+  fits[[m]] <- add_criterion(fits[[m]], criterion = "loo", moment_match = TRUE)
+  if (any(fits[[m]]$criteria$loo$diagnostics$pareto_k > 0.7)) {
+    fits[[m]] <- add_criterion(fits[[m]], criterion = "loo", moment_match = TRUE,
+                               reloo = TRUE, overwrite = TRUE)
+  }
+}
+```
+
+```{r}
+#| label: tbl-pareto-k
+#| tbl-cap: "Number of observations with Pareto k > 0.5."
+tibble(
+  model = specs$model,
+  pareto_k_over_0.7 = sapply(specs$model, function(m) sum(fits[[m]]$criteria$loo$diagnostics$pareto_k > 0.7))
+) |>
+  kable()
+```
+
+```{r}
+#| label: tbl-loo-compare
+#| tbl-cap: "PSIS-LOO comparison of all models."
+loo_compare(setNames(lapply(specs$model, function(m) fits[[m]]$criteria$loo), specs$model)) |>
+  as.data.frame() |>
+  select(any_of(c("model", "elpd_diff", "se_diff", "elpd_loo", "se_elpd_loo", "p_loo"))) |>
+  kable(digits = 1)
+```
+
+```{r}
+#| label: tbl-loo-r2
+#| tbl-cap: "LOO-R2 (log scale)."
+bind_rows(lapply(specs$model, function(m) {
+  as.data.frame(loo_R2(fits[[m]])) |> mutate(model = m, .before = 1)
+})) |>
+  kable(digits = 2, row.names = FALSE)
+```
+
+# Leave-states-out (optional)
+
+```{r}
+#| label: kfold-state
+#| eval: false
+state_folds <- loo::kfold_split_grouped(K = 10, x = cigar$state)
+kf <- setNames(lapply(specs$model, function(m) {
+  kfold(fits[[m]], folds = state_folds, seed = SEED,
+        allow_new_levels = TRUE, sample_new_levels = "gaussian")
+}), specs$model)
+loo_compare(kf)
+```

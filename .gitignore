@@ -1,0 +1,9 @@
+_old/
+analysis/fits/
+.RData
+.Rhistory
+.Rproj.user/
+.DS_Store
+*_files/
+*.html
+*.pdf

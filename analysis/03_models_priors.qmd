@@ -1,0 +1,61 @@
+---
+title: "Stages 3–4: Models, priors and prior predictive check"
+author: anonymous
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+editor: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| results: false
+source("setup.R")
+```
+
+# Models
+
+```{r}
+#| label: formulas
+formulas
+```
+
+```{r}
+#| label: tbl-default-prior
+#| tbl-cap: "brms default priors for M2b (replaced by explicit priors)."
+default_prior(formulas$M2b, data = cigar) |>
+  as.data.frame() |>
+  select(prior, class, coef, group) |>
+  kable()
+```
+
+# Priors
+
+```{r}
+#| label: priors
+priors
+```
+
+```{r}
+#| label: prior-fits
+#| results: false
+prior_fits <- setNames(lapply(specs$model, fit_prior), specs$model)
+```
+
+```{r}
+#| label: fig-prior-pc
+#| fig-cap: "Prior predictive checks: observed log sales (dark) and 50 prior predictive draws."
+#| fig-width: 10
+#| fig-height: 7
+wrap_plots(lapply(specs$model, function(m) {
+  pp_check(prior_fits[[m]], ndraws = 50) + labs(title = m)
+}), ncol = 2) + plot_layout(guides = "collect")
+```

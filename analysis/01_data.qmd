@@ -1,0 +1,127 @@
+---
+title: "Stage 1: Data and preprocessing"
+author: anonymous
+format:
+  html:
+    toc: true
+    code-tools: true
+    code-line-numbers: true
+    number-sections: true
+    mainfont: Georgia, serif
+    page-layout: article
+editor: source
+execute:
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: setup
+#| results: false
+source("setup.R")
+```
+
+# Data
+
+```{r}
+#| label: data-size
+c(rows = nrow(cigar), states = nlevels(cigar$state), missing = sum(is.na(cigar)))
+```
+
+```{r}
+#| label: tbl-data
+#| tbl-cap: "First six rows of the preprocessed data."
+cigar |>
+  select(state, year_full, sales, rprice, rpimin, rincome) |>
+  head() |>
+  kable(digits = 1, col.names = c("State", "Year", "Sales", "Real price",
+                                  "Real neighbour min. price", "Real income"))
+```
+
+# Figures
+
+```{r}
+#| label: fig-intro
+#| fig-cap: "Log sales against log real price. Left: one pooled line. Right: one line per state."
+#| fig-width: 10
+#| fig-height: 5
+p_pooled <- ggplot(cigar, aes(log_rprice, log_sales)) +
+  geom_point(aes(colour = year_full), alpha = 0.5, size = 1) +
+  geom_smooth(method = "lm", formula = y ~ x, colour = "black", se = FALSE) +
+  scale_colour_viridis_c(name = "Year") +
+  labs(title = "Pooled", x = "log real price", y = "log packs per person")
+p_state <- ggplot(cigar, aes(log_rprice, log_sales, group = state)) +
+  geom_smooth(method = "lm", formula = y ~ x, se = FALSE, linewidth = 0.4, colour = "steelblue") +
+  geom_smooth(aes(group = 1), method = "lm", formula = y ~ x, colour = "black", se = FALSE) +
+  labs(title = "By state", x = "log real price", y = NULL)
+(p_pooled | p_state) + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+```
+
+```{r}
+#| label: fig-trends
+#| fig-cap: "Real price and sales per person over time. Grey: states, black: median."
+#| fig-width: 10
+#| fig-height: 4.5
+trend <- cigar |>
+  select(state, year_full, rprice, sales) |>
+  pivot_longer(c(rprice, sales), names_to = "var", values_to = "value") |>
+  mutate(var = recode(var, rprice = "Real price (1983 cents)", sales = "Packs per person"))
+trend_median <- trend |>
+  group_by(var, year_full) |>
+  summarise(value = median(value), .groups = "drop")
+ggplot(trend, aes(year_full, value)) +
+  geom_line(aes(group = state), colour = "grey60", alpha = 0.5) +
+  geom_line(data = trend_median, linewidth = 1.1) +
+  facet_wrap(~ var, scales = "free_y") +
+  labs(x = "Year", y = NULL)
+```
+
+```{r}
+#| label: fig-outcome
+#| fig-cap: "Distribution of sales per person on the original and log scale."
+#| fig-width: 9
+#| fig-height: 4
+(ggplot(cigar, aes(sales)) + geom_histogram(bins = 40) + labs(x = "Packs per person", y = "Count")) |
+  (ggplot(cigar, aes(log_sales)) + geom_histogram(bins = 40) + labs(x = "log packs per person", y = NULL))
+```
+
+```{r}
+#| label: fig-covariates
+#| fig-cap: "Log sales against the control variables with a LOESS smoother."
+#| fig-width: 11
+#| fig-height: 4
+cigar |>
+  select(log_sales, log_rpimin, log_rincome, year_full) |>
+  pivot_longer(-log_sales, names_to = "covariate", values_to = "value") |>
+  mutate(covariate = recode(covariate,
+                            log_rpimin = "log real neighbour min. price",
+                            log_rincome = "log real income",
+                            year_full = "Year")) |>
+  ggplot(aes(value, log_sales)) +
+  geom_point(alpha = 0.25, size = 0.8) +
+  geom_smooth(method = "loess", formula = y ~ x, colour = "firebrick", se = FALSE) +
+  facet_wrap(~ covariate, scales = "free_x") +
+  labs(x = NULL, y = "log packs per person")
+```
+
+```{r}
+#| label: fig-state-slopes
+#| fig-cap: "Exploratory least-squares price slopes per state (±2 SE), with a linear year trend. Dashed: pooled slope."
+#| fig-width: 7
+#| fig-height: 8
+state_slopes <- cigar |>
+  group_by(state) |>
+  group_modify(~ {
+    co <- summary(lm(log_sales ~ log_rprice + year_c, data = .x))$coefficients["log_rprice", ]
+    tibble(est = co[["Estimate"]], se = co[["Std. Error"]])
+  }) |>
+  ungroup() |>
+  mutate(state = reorder(state, est))
+pooled_slope <- coef(lm(log_sales ~ log_rprice + year_c, data = cigar))[["log_rprice"]]
+ggplot(state_slopes, aes(est, state)) +
+  geom_vline(xintercept = 0, colour = "grey50") +
+  geom_vline(xintercept = pooled_slope, linetype = "dashed") +
+  geom_pointrange(aes(xmin = est - 2 * se, xmax = est + 2 * se), size = 0.2) +
+  labs(x = "Price slope", y = "State") +
+  theme(axis.text.y = element_text(size = 7))
+```
